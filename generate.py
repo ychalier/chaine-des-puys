@@ -6,6 +6,7 @@ import math
 import argparse
 import codecs
 import re
+import random
 import pandas
 
 
@@ -97,9 +98,10 @@ class Way:
     MID_ELEVATION = 900
     MAX_ELEVATION = 1200
 
-    def __init__(self, elevation=None):
+    def __init__(self, elevation=None, is_subway=False):
         self.elevation = elevation
         self.nodes = list()
+        self.is_subway = is_subway
 
     def valid(self):
         """Check if the way is valid to display.
@@ -114,6 +116,8 @@ class Way:
     def color(self):
         """Compute the fill color based on its elevation.
         """
+        if self.is_subway:
+            return "transparent"
         if self.nodes[0].distance(self.nodes[-1]) > 200:
             return "transparent"
         if self.elevation > Way.MID_ELEVATION:
@@ -135,6 +139,40 @@ class Way:
         if self.elevation % 50 == 0:
             return .6
         return .3
+
+    def sub(self, target_nodes, threshold):
+        """Given a set of target nodes, yield parts of its node list, selecting
+        nodes close to at least one target node.
+        """
+        close_nodes = [
+            list_distance(self_node, target_nodes) < threshold
+            for self_node in self.nodes
+        ]
+        current_index = 0
+        for is_close, length in compress_sequence(close_nodes):
+            if is_close and length > 100:
+                subway = Way(elevation=self.elevation, is_subway=True)
+                left_offset = current_index + random.randint(0, 20)
+                right_offset = current_index + length - random.randint(0, 20)
+                subway.nodes = self.nodes[left_offset:right_offset]
+                yield subway
+            current_index += length
+
+
+def compress_sequence(raw):
+    """Given a sequence of symbols, return the list of parts of similar
+    consecutive symbols (and the part length).
+    """
+    sequences = list()
+    start_symbol, length = raw[0], 1
+    for symbol in raw[1:]:
+        if symbol == start_symbol:
+            length += 1
+        else:
+            sequences.append((start_symbol, length))
+            start_symbol = symbol
+            length = 1
+    return sequences
 
 
 class Scaler:
@@ -230,51 +268,64 @@ class SvgBuilder:
         xmlns="http://www.w3.org/2000/svg"
         encoding="utf-8"
     >
+    <defs>
+        <linearGradient id="Gradient1" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="black" stop-opacity=".3"/>
+            <stop offset="50%" stop-color="black"  stop-opacity=".4" />
+            <stop offset="100%" stop-color="black"  stop-opacity=".3"/>
+        </linearGradient>
+    </defs>
     {svg_data}
     </svg>
     """.strip())
 
-    def __init__(self, way_length_threshold, way_distance_threshold,
-                 way_closure_threshold):
-        self.way_length_threshold = way_length_threshold
+    def __init__(self, way_distance_threshold, way_closure_threshold, way_node_distance_threshold):
         self.way_distance_threshold = way_distance_threshold
         self.way_closure_threshold = way_closure_threshold
+        self.way_node_distance_threshold = way_node_distance_threshold
         with codecs.open("template.html", "r", "utf8") as infile:
             self.HTML_TEMPLATE = infile.read()
 
     def _select_ways(self, contour_ways, puy_nodes):
         contour_ways.sort(key=lambda way: way.elevation)
         for way in contour_ways:
-            if len(way.nodes) > self.way_length_threshold:
-                continue
+            rejected = False
             if list_distance(way.barycenter(), puy_nodes)\
                     > self.way_distance_threshold:
-                continue
-            if way.nodes[0].distance(way.nodes[-1])\
+                rejected = True
+            elif way.nodes[0].distance(way.nodes[-1])\
                     > self.way_closure_threshold:
-                continue
-            yield way
+                rejected = True
+            if not rejected:
+                yield way
+            else:
+                for subway in way.sub(puy_nodes, self.way_node_distance_threshold):
+                    yield subway
 
     def build(self, contour_ways, puy_nodes, department):
         """Output SVG text.
         """
         placed_nodes = set()
-        svg_data = """<g id="scene"><g>"""
+        svg_data = """<g id="scene"><g stroke-linejoin="round" >"""
         path_data = "M %s" % str(department.nodes[0])
         for node in department.nodes[1:-1:10]:
             path_data += " L %s" % str(node)
         svg_data += """<path stroke="grey" fill="transparent" stroke-width="1" d="%s" />\n""" % (
             path_data
         )
-        svg_data += """</g><g stroke="black">"""
+        svg_data += """</g><g stroke-linejoin="round">"""
         for way in self._select_ways(contour_ways, puy_nodes):
-            path_data = "M %s" % str(way.nodes[-1])
+            if way.is_subway:
+                path_data = "M %s" % str(way.nodes[0])
+            else:
+                path_data = "M %s" % str(way.nodes[-1])
             for node in way.nodes:
                 path_data += " L %s" % str(node)
                 placed_nodes.add(node)
-            svg_data += """<path fill="%s" d="%s" stroke-width="%s" />\n""" % (
+            svg_data += """<path fill="%s" d="%s" stroke="%s" stroke-width="%s" />\n""" % (
                 way.color(),
                 path_data,
+                ("url(#Gradient1)" if way.is_subway else "black"),
                 way.stroke())
         svg_data += "</g><g>"
         for node in puy_nodes:
@@ -338,9 +389,9 @@ def main(args):
     department = load_poly(args.poly)[1]["1"]
     scaler.transform(department.nodes)
     builder = SvgBuilder(
-        args.way_length_threshold,
         args.way_distance_threshold,
-        args.way_closure_threshold
+        args.way_closure_threshold,
+        args.way_node_distance_threshold,
     )
     svg = builder.build(contour_ways, puy_nodes, department)
     visit_list = ""
@@ -365,7 +416,7 @@ if __name__ == "__main__":
     parser.add_argument("csv", type=str, help="input CSV file (puys)")
     parser.add_argument("poly", type=str, help="input POLY file (department)")
     parser.add_argument("html", type=str, help="output HTML file (map)")
-    parser.add_argument("-l", type=int, default=1000, dest="way_length_threshold")
     parser.add_argument("-d", type=int, default=30, dest="way_distance_threshold")
     parser.add_argument("-c", type=int, default=200, dest="way_closure_threshold")
+    parser.add_argument("-n", type=int, default=120, dest="way_node_distance_threshold")
     main(parser.parse_args())

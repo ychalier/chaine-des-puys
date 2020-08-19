@@ -33,8 +33,8 @@ You'll need Python 3, and a small program called [Srtm2Osm](https://wiki.openstr
 
 Use the Python script `generate.py` to generate your HTML file:
 ```
-usage: generate.py [-h] [-l WAY_LENGTH_THRESHOLD] [-d WAY_DISTANCE_THRESHOLD]
-                   [-c WAY_CLOSURE_THRESHOLD]
+usage: generate.py [-h] [-d WAY_DISTANCE_THRESHOLD] [-c WAY_CLOSURE_THRESHOLD]
+                   [-n WAY_NODE_DISTANCE_THRESHOLD]
                    osm csv poly html
 
 positional arguments:
@@ -45,9 +45,9 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  -l WAY_LENGTH_THRESHOLD    (default: 1000)
-  -d WAY_DISTANCE_THRESHOLD  (default: 30)
-  -c WAY_CLOSURE_THRESHOLD   (default: 200)
+  -d WAY_DISTANCE_THRESHOLD
+  -c WAY_CLOSURE_THRESHOLD
+  -n WAY_NODE_DISTANCE_THRESHOLD
 ```
 
 To serve the result as a static files, you'll need to upload the generated HTML, as well as `style.css` and `script.js` to your hosting server.
