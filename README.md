@@ -4,6 +4,8 @@ A visualization for the geographical data of the [Chaîne des Puys](https://en.w
 
 I wanted to keep track of my progress in hiking over the whole chain, and came up with a 2D visualization of the summits surrounded by minimal contours. The department (the 'Puy de Dôme') outline is also shown for giving an idea of the chain location. Summit names and elevations are plotted if available. Visited ones are marked with blue dots, not yet visited ones with red dots.
 
+__This script is now included in [django-topopartner](https://github.com/ychalier/topopartner), enabling a dynamic access to the plot.__
+
 ## Getting Started
 
 ### Prerequisites
